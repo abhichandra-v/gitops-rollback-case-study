@@ -1,0 +1,24 @@
+# ✅ "AFTER" — the automated gate. The canary is promoted only if its success
+# rate stays above 95%. This is what makes the rollback hands-free: a bad build
+# fails the measurement and Argo Rollouts aborts on its own.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate
+  namespace: checkout
+spec:
+  args:
+    - name: service-name
+  metrics:
+    - name: success-rate
+      interval: 30s
+      count: 4                    # four readings during the pause window
+      successCondition: result[0] >= 0.95
+      failureLimit: 1             # one bad reading aborts the rollout
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            sum(rate(http_requests_total{service="{{args.service-name}}",code!~"5.."}[2m]))
+            /
+            sum(rate(http_requests_total{service="{{args.service-name}}"}[2m]))

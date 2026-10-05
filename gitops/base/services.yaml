@@ -1,0 +1,33 @@
+# ✅ "AFTER" — the canary needs two services: stable and canary. Argo Rollouts
+# shifts the pod selectors between them to route the percentage of traffic.
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkout-stable
+  namespace: checkout
+  labels:
+    app: checkout
+spec:
+  type: ClusterIP
+  selector:
+    app: checkout
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkout-canary
+  namespace: checkout
+  labels:
+    app: checkout
+spec:
+  type: ClusterIP
+  selector:
+    app: checkout
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

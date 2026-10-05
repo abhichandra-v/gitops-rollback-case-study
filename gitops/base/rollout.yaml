@@ -1,0 +1,85 @@
+# ✅ "AFTER" — an Argo Rollouts canary. Replaces the all-at-once Deployment.
+# A new version takes 10% of traffic, pauses for a human/automated check, then
+# ramps 25% → 50% → 100%. If the analysis fails at any step, it auto-aborts and
+# traffic snaps back to the stable version — no human needed.
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: checkout
+  namespace: checkout
+  labels:
+    app: checkout
+spec:
+  replicas: 4
+  revisionHistoryLimit: 5          # keep history so rollback is instant
+  selector:
+    matchLabels:
+      app: checkout
+  strategy:
+    canary:
+      # Analysis runs against the canary at each pause; a failed run aborts
+      # the rollout and shifts 100% back to stable automatically.
+      analysis:
+        templates:
+          - templateName: success-rate
+        startingStep: 1
+        args:
+          - name: service-name
+            value: checkout-canary
+      steps:
+        - setWeight: 10
+        - pause: {duration: 2m}     # bake time at 10%
+        - setWeight: 25
+        - pause: {duration: 2m}
+        - setWeight: 50
+        - pause: {duration: 2m}
+        - setWeight: 100
+      canaryService: checkout-canary
+      stableService: checkout-stable
+      trafficRouting:
+        # Example with the nginx ingress controller; swap for your mesh/ingress.
+        nginx:
+          stableIngress: checkout
+  template:
+    metadata:
+      labels:
+        app: checkout
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: checkout
+          # Digest-pinned and traceable — the commit that changes this IS the deploy.
+          image: ghcr.io/abhichandra-v/checkout@sha256:aa11bb22cc33dd44ee55ff66aa77bb88cc99dd00ee11ff2233445566778899aa
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10

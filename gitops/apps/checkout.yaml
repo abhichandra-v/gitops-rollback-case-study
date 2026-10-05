@@ -1,0 +1,34 @@
+# ✅ "AFTER" — the ArgoCD Application. This is the whole GitOps pivot in one file:
+# Git becomes the source of truth, and ArgoCD continuously reconciles the cluster
+# to match it. A deploy is now a git commit; a rollback is a git revert.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: checkout
+  namespace: argocd
+  # Keep the app from being pruned if the Application object is deleted by mistake.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/abhichandra-v/gitops-rollback-case-study.git
+    targetRevision: main
+    path: gitops/base
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: checkout
+  syncPolicy:
+    # Automated sync = the cluster always matches Git. selfHeal reverts manual
+    # kubectl edits; prune removes resources deleted from Git.
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
